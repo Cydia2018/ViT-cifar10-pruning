@@ -7,6 +7,24 @@ from torch import nn
 
 MIN_NUM_PATCHES = 16
 
+class channel_selection(nn.Module):
+    def __init__(self, num_channels):
+        """
+        Initialize the `indexes` with all one vector with the length same as the number of channels.
+        During pruning, the places in `indexes` which correpond to the channels to be pruned will be set to 0.
+        """
+        super(channel_selection, self).__init__()
+        self.indexes = nn.Parameter(torch.ones(num_channels))
+
+    def forward(self, input_tensor):
+        """
+        Parameter
+        ---------
+        input_tensor: (B, num_patches + 1, dim). 
+        """
+        output = input_tensor.mul(self.indexes)
+        return output
+
 class Residual(nn.Module):
     def __init__(self, fn):
         super().__init__()
@@ -25,15 +43,33 @@ class PreNorm(nn.Module):
 class FeedForward(nn.Module):
     def __init__(self, dim, hidden_dim, dropout = 0.):
         super().__init__()
-        self.net = nn.Sequential(
+        # self.net = nn.Sequential(
+        #     nn.Linear(dim, hidden_dim),
+        #     nn.GELU(),
+        #     nn.Dropout(dropout),
+        #     nn.Linear(hidden_dim, dim),
+        #     nn.Dropout(dropout)
+        # )
+        self.net1 = nn.Sequential(
             nn.Linear(dim, hidden_dim),
             nn.GELU(),
-            nn.Dropout(dropout),
+            nn.Dropout(dropout)
+        )
+        self.net2 = nn.Sequential(
             nn.Linear(hidden_dim, dim),
             nn.Dropout(dropout)
         )
+        self.select1 = channel_selection(dim)
+        self.select2 = channel_selection(dim)
     def forward(self, x):
-        return self.net(x)
+        # pruning   torch.Size([4, 65, 512])
+        x = self.select1(x)
+        x = self.net1(x)
+        # pruning   torch.Size([4, 65, 512])
+        x = self.select2(x)
+        x = self.net2(x)
+        return x
+        # return self.net(x)
 
 class Attention(nn.Module):
     def __init__(self, dim, heads = 8, dropout = 0.):
@@ -46,9 +82,13 @@ class Attention(nn.Module):
             nn.Linear(dim, dim),
             nn.Dropout(dropout)
         )
+        self.select1 = channel_selection(dim)
+        self.select2 = channel_selection(dim)
 
     def forward(self, x, mask = None):
         b, n, _, h = *x.shape, self.heads
+        # pruning   torch.Size([4, 65, 512])
+        x = self.select1(x)
         qkv = self.to_qkv(x).chunk(3, dim = -1)
         q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> b h n d', h = h), qkv)
 
@@ -65,6 +105,8 @@ class Attention(nn.Module):
 
         out = torch.einsum('bhij,bhjd->bhid', attn, v)
         out = rearrange(out, 'b h n d -> b n (h d)')
+        # pruning   torch.Size([4, 65, 512])
+        out = self.select2(out)
         out =  self.to_out(out)
         return out
 
@@ -126,3 +168,34 @@ class ViT(nn.Module):
 
         x = self.to_cls_token(x[:, 0])
         return self.mlp_head(x)
+
+def setup_seed(seed):
+    torch.manual_seed(seed)
+    # torch.cuda.manual_seed_all(seed)
+    # np.random.seed(seed)
+    # random.seed(seed)
+    torch.backends.cudnn.deterministic = True
+
+if __name__ == "__main__":
+    # setup_seed(200)
+    b,c,h,w = 4, 3, 32, 32
+    x = torch.randn(b, c, h, w)
+    net = ViT(
+        image_size = 32,
+        patch_size = 4,
+        num_classes = 10,
+        dim = 512,
+        depth = 6,
+        heads = 8,
+        mlp_dim = 512,
+        dropout = 0.1,
+        emb_dropout = 0.1
+    )
+    y = net(x)
+    # print(y)
+    print(y.size())
+
+    for m in net.modules():
+        if isinstance(m, channel_selection):
+            print(m)
+            # print(m.indexes.data)
