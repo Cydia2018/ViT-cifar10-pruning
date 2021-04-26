@@ -57,6 +57,7 @@ thre = y[thre_index]
 # print(thre)
 pruned = 0
 cfg = []
+cfg_mask = []
 for k, m in enumerate(model.modules()):
     if isinstance(m, channel_selection):
         weight_copy = m.indexes.data.abs().clone()
