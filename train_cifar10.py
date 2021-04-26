@@ -106,7 +106,7 @@ net = net.to(device)
 # if device == 'cuda':
 #     net = torch.nn.DataParallel(net) # make parallel
 #     cudnn.benchmark = True
-cudnn.benchmark = True
+# cudnn.benchmark = True
 
 if args.resume:
     # Load checkpoint.

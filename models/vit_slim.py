@@ -120,7 +120,7 @@ class Transformer(nn.Module):
         super().__init__()
         self.layers = nn.ModuleList([])
         if cfg is not None:
-            for num in cfg[depth]:
+            for num in cfg:
                 self.layers.append(nn.ModuleList([
                     Residual(PreNorm(dim, Attention(dim, num[0], heads = heads, dropout = dropout))),
                     Residual(PreNorm(dim, FeedForward(dim, num[1], dropout = dropout)))
@@ -137,7 +137,7 @@ class Transformer(nn.Module):
             x = ff(x)
         return x
 
-class ViT(nn.Module):
+class ViT_slim(nn.Module):
     def __init__(self, *, image_size, patch_size, num_classes, dim, depth, heads, mlp_dim, cfg=None, channels = 3, dropout = 0., emb_dropout = 0.):
         super().__init__()
         assert image_size % patch_size == 0, 'image dimensions must be divisible by the patch size'

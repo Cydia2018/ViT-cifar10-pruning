@@ -20,3 +20,15 @@ I use pytorch for implementation.
 | ViT patch=4 |    80%   |
 | ViT patch=8 |    30%   |
 |   resnet18  |  93% ;)  |
+
+# Pruning
+
+python vitprune.py
+
+Then you can use the saved model to finetune.
+
+# Reference
+
+https://github.com/kentaroy47/vision-transformers-cifar10.git
+
+[Visual Transformer Pruning](https://arxiv.org/abs/2104.08500)
