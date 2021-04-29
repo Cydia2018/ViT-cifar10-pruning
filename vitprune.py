@@ -29,7 +29,7 @@ model = ViT(
     )
 model = model.to(device)
 
-model_path = "checkpoint/pruning-adamw-vit-4-79.59.t7"
+model_path = "checkpoint/pruning-adamw-vit-4-79.84.t7"
 print("=> loading checkpoint '{}'".format(model_path))
 checkpoint = torch.load(model_path)
 start_epoch = checkpoint['epoch']
@@ -62,11 +62,13 @@ cfg = []
 cfg_mask = []
 for k, m in enumerate(model.modules()):
     if isinstance(m, channel_selection):
-        if k in [14,36, 58, 80, 102, 124]:
+        # print(k)
+        # print(m)
+        if k in [16,40,64,88,112,136]:
             weight_copy = m.indexes.data.abs().clone()
             mask = weight_copy.gt(thre).float().cuda()
             thre_ = thre.clone()
-            while torch.sum(mask)%24 !=0:                       # 3*heads
+            while (torch.sum(mask)%8 !=0):                       # heads
                 thre_ = thre_ - 0.0001
                 mask = weight_copy.gt(thre_).float().cuda()
         else:
@@ -83,7 +85,6 @@ pruned_ratio = pruned/total
 print('Pre-processing Successful!')
 print(cfg)
 
-# cfg = [768, 507, 864, 483, 984, 401, 1032, 390, 1248, 360, 1320, 417]
 
 def test(model):
     transform_test = transforms.Compose([
@@ -110,7 +111,7 @@ test(model)
 cfg_prune = []
 for i in range(len(cfg)):
     if i%2!=0:
-        cfg_prune.append([int(cfg[i-1]/3),cfg[i]])
+        cfg_prune.append([cfg[i-1],cfg[i]])
 
 newmodel = ViT_slim(image_size = 32,
     patch_size = 4,
@@ -124,23 +125,51 @@ newmodel = ViT_slim(image_size = 32,
     cfg=cfg_prune)
 
 newmodel.to(device)
-num_parameters = sum([param.nelement() for param in newmodel.parameters()])
+# num_parameters = sum([param.nelement() for param in newmodel.parameters()])
+
+newmodel_dict = newmodel.state_dict().copy()
 
 i = 0
-for name, module in newmodel.named_modules():
-    if 'net1.0' in name or 'to_qkv' in name:
-        for name_, module_ in model.named_modules():
-            if name == name_:
-                print(name)
-                # print(module.weight.data)
-                # print(module.weight.data.size())
-                # print(module_.weight.data.size())
-                # print(int(torch.sum(cfg_mask[i])))
-                idx = np.squeeze(np.argwhere(np.asarray(cfg_mask[i].cpu().numpy())))
-                # print(module_.weight.data[idx.tolist()].size())
-                # print('-------------------')
-                module.weight.data = module_.weight.data[idx.tolist()].clone()
-                i = i + 1
+newdict = {}
+for k,v in model.state_dict().items():
+    if 'net1.0.weight' in k:
+        # print(k)
+        # print(v.size())
+        # print('----------')
+        idx = np.squeeze(np.argwhere(np.asarray(cfg_mask[i].cpu().numpy())))
+        newdict[k] = v[idx.tolist()].clone()
+    elif 'net1.0.bias' in k:
+        # print(k)
+        # print(v.size())
+        # print('----------')
+        idx = np.squeeze(np.argwhere(np.asarray(cfg_mask[i].cpu().numpy())))
+        newdict[k] = v[idx.tolist()].clone()
+    elif 'to_q' in k or 'to_k' in k or 'to_v' in k:
+        # print(k)
+        # print(v.size())
+        # print('----------')
+        idx = np.squeeze(np.argwhere(np.asarray(cfg_mask[i].cpu().numpy())))
+        newdict[k] = v[idx.tolist()].clone()
+    elif 'net2.0.weight' in k:
+        # print(k)
+        # print(v.size())
+        # print('----------')
+        idx = np.squeeze(np.argwhere(np.asarray(cfg_mask[i].cpu().numpy())))
+        newdict[k] = v[:,idx.tolist()].clone()
+        i = i + 1
+    elif 'to_out.0.weight' in k:
+        # print(k)
+        # print(v.size())
+        # print('----------')
+        idx = np.squeeze(np.argwhere(np.asarray(cfg_mask[i].cpu().numpy())))
+        newdict[k] = v[:,idx.tolist()].clone()
+        i = i + 1
+
+    elif k in newmodel.state_dict():
+        newdict[k] = v
+
+newmodel_dict.update(newdict)
+newmodel.load_state_dict(newmodel_dict)
 
 torch.save(newmodel.state_dict(), 'pruned.pth')
 print('after pruning: ', end=' ')

@@ -77,21 +77,33 @@ class Attention(nn.Module):
         self.heads = heads
         self.scale = dim ** -0.5
 
-        self.to_qkv = nn.Linear(dim, dim * 3, bias = False)
+        # self.to_qkv = nn.Linear(dim, dim * 3, bias = False)
+        self.to_q = nn.Linear(dim, dim , bias = False)
+        self.to_k = nn.Linear(dim, dim, bias = False)
+        self.to_v = nn.Linear(dim, dim, bias = False)
         self.to_out = nn.Sequential(
             nn.Linear(dim, dim),
             nn.Dropout(dropout)
         )
-        self.select1 = channel_selection(dim*3)
+        self.select1 = channel_selection(dim)
         # self.select2 = channel_selection(dim)
+        # self.select3 = channel_selection(dim)
 
     def forward(self, x, mask = None):
         b, n, _, h = *x.shape, self.heads
         # pruning   torch.Size([4, 65, 512])
-        qkv = self.to_qkv(x)
-        qkv = self.select1(qkv)
-        qkv = qkv.chunk(3, dim = -1)
-        q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> b h n d', h = h), qkv)
+        q = self.to_q(x)
+        q = self.select1(q)
+        q = rearrange(q, 'b n (h d) -> b h n d', h = h)
+        k = self.to_k(x)
+        k = self.select1(k)
+        k = rearrange(k, 'b n (h d) -> b h n d', h = h)
+        v = self.to_v(x)
+        v = self.select1(v)
+        v = rearrange(v, 'b n (h d) -> b h n d', h = h)
+
+        # qkv = self.to_qkv(x).chunk(3, dim = -1)
+        # q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> b h n d', h = h), qkv)
 
         dots = torch.einsum('bhid,bhjd->bhij', q, k) * self.scale
 
