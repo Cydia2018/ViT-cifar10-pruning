@@ -23,7 +23,7 @@ I use pytorch for implementation.
 
 # Pruning
 
-python vitprune.py
+`python vitprune.py`
 
 Then you can use the saved model to finetune.
 
